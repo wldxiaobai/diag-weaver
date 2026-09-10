@@ -1,0 +1,98 @@
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { WeaverApp } from "../src/app.js";
+import { MemoryHost } from "../src/memory-host.js";
+import { createMcpServer } from "../src/mcp-server.js";
+import { SnapshotStore } from "../src/store.js";
+
+const temps: string[] = [];
+
+async function tempDir(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "diag-weaver-"));
+  temps.push(dir);
+  return dir;
+}
+
+afterEach(async () => {
+  await Promise.all(temps.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+function appAt(storeRoot: string): WeaverApp {
+  return new WeaverApp(new SnapshotStore(storeRoot), new MemoryHost());
+}
+
+describe("WeaverApp", () => {
+  it("does not create graph-store or the user store on read/ensure", async () => {
+    const workspace = await tempDir();
+    const storeRoot = path.join(await tempDir(), "missing-store");
+    const previous = process.cwd();
+    process.chdir(workspace);
+    try {
+      const app = appAt(storeRoot);
+      await app.editorEnsure();
+      const read = await app.read();
+      expect(read.empty).toBe(true);
+      expect(await readdir(workspace)).toEqual([]);
+      expect(await app.store.hasRoot()).toBe(false);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it("replace, patch, snapshot, restore, and explicit export", async () => {
+    const workspace = await tempDir();
+    const storeRoot = path.join(await tempDir(), "store");
+    const previous = process.cwd();
+    process.chdir(workspace);
+    try {
+      const app = appAt(storeRoot);
+      const replaced = await app.replace({
+        content: "flowchart TD\n  ingest --> weave",
+      });
+      expect(replaced.format).toBe("mermaid");
+      expect(replaced.summary.blank).toBe(false);
+
+      const patched = await app.patch({
+        operations: [{ type: "add_node", id: "note", label: "keep" }],
+        layout: "none",
+      });
+      expect(patched.summary.cells.some((cell) => cell.id === "note")).toBe(true);
+
+      const snap = await app.snapshot("评审前");
+      expect(snap.label).toBe("评审前");
+
+      await app.patch({
+        operations: [{ type: "set_label", id: "note", label: "changed" }],
+        layout: "none",
+      });
+      await app.restore("评审前");
+      const after = await app.read();
+      expect("summary" in after && after.summary.cells.some((cell) => cell.label === "keep")).toBe(true);
+
+      const exported = await app.exportTo("./docs/architecture.drawio");
+      expect(await readFile(exported.path, "utf8")).toMatch(/vertex="1"/);
+      expect(await readdir(workspace)).toEqual(["docs"]);
+      expect(await app.store.hasCurrent()).toBe(true);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it("registers the thin MCP tool surface", () => {
+    const server = createMcpServer(appAt(path.join(os.tmpdir(), "unused")));
+    const tools = Object.keys((server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools);
+    expect(tools.sort()).toEqual(
+      [
+        "diagram_export",
+        "diagram_patch",
+        "diagram_read",
+        "diagram_replace",
+        "diagram_restore",
+        "diagram_snapshot",
+        "editor_ensure",
+      ].sort(),
+    );
+  });
+});

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>diag-weaver</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #111827;
+        color: #e5e7eb;
+      }
+      #bar {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px;
+        background: #111827;
+        font-size: 12px;
+      }
+      #bar strong {
+        letter-spacing: 0.04em;
+      }
+      #status.wait {
+        color: #fbbf24;
+      }
+      #status.ok {
+        color: #34d399;
+      }
+      #save {
+        margin-left: auto;
+        color: #9ca3af;
+      }
+      iframe {
+        border: 0;
+        width: 100%;
+        height: calc(100% - 32px);
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <strong>diag-weaver</strong>
+      <span id="status" class="wait">connecting to MCP…</span>
+      <span id="save"></span>
+    </div>
+    <iframe
+      id="editor"
+      title="draw.io"
+      src="https://embed.diagrams.net/?embed=1&proto=json&libraries=1&spin=1&noExitBtn=1"
+    ></iframe>
+    <script>
+      const DRAWIO = "https://embed.diagrams.net";
+      const iframe = document.getElementById("editor");
+      const status = document.getElementById("status");
+      const saveEl = document.getElementById("save");
+      let ws;
+      let editorInit = false;
+
+      function setStatus(text, ok) {
+        status.textContent = text;
+        status.className = ok ? "ok" : "wait";
+      }
+
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(proto + "://" + location.host + "/bridge");
+        ws.onopen = function () {
+          setStatus("MCP connected — waiting for draw.io", editorInit);
+          ws.send(JSON.stringify({ event: "bridge-open", editorInit: editorInit }));
+        };
+        ws.onclose = function () {
+          setStatus("MCP disconnected — retrying", false);
+          setTimeout(connect, 1000);
+        };
+        ws.onerror = function () {
+          try {
+            ws.close();
+          } catch (e) {}
+        };
+        ws.onmessage = function (ev) {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.postMessage(ev.data, DRAWIO);
+          }
+        };
+      }
+
+      window.addEventListener("message", function (ev) {
+        if (ev.origin !== DRAWIO) return;
+        const payload = typeof ev.data === "string" ? ev.data : JSON.stringify(ev.data);
+        let msg;
+        try {
+          msg = JSON.parse(payload);
+        } catch (e) {
+          return;
+        }
+        if (msg.event === "init") {
+          editorInit = true;
+          setStatus("canvas ready", true);
+        }
+        if (msg.event === "autosave" || msg.event === "save") {
+          saveEl.textContent = "saved " + new Date().toLocaleTimeString();
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(payload);
+        }
+      });
+
+      connect();
+    </script>
+  </body>
+</html>
