@@ -1,0 +1,40 @@
+{
+  "name": "diag-weaver",
+  "version": "0.1.0",
+  "description": "Thin MCP + live draw.io canvas + simple local snapshots. Not a standalone agent.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "diag-weaver": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "web",
+    "README.md",
+    "LICENSE",
+    "mcp-config.example.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

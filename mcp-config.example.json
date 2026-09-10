@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "diag-weaver": {
+      "command": "node",
+      "args": ["D:/Projects/diag-weaver/dist/index.js"]
+    }
+  }
+}
