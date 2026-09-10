@@ -21,26 +21,42 @@ Agent ──MCP┘
 
 ## 安装与 MCP 配置
 
+用 pnpm（生成物在 `dist/`，不入库）。测 MCP 时走「构建 + 注册到全局 bin」，pnpm 12 已去掉 `pnpm link --global`，用 `pnpm add -g .` 达到同样效果：
+
 ```bash
-npm install
-npm test
-npm run build
+pnpm install
+pnpm test
+pnpm run link
 ```
 
-在 Cursor 的 MCP 配置里（路径改成你的绝对路径）：
+`pnpm run link` = `pnpm build` + `pnpm add -g .`。之后本机任意目录都能调 `diag-weaver`。卸掉：`pnpm run unlink`。若命令找不到，先 `pnpm setup` 并把 `pnpm bin -g` 加进 PATH。
+
+Cursor MCP 配置（全局注册之后）：
 
 ```json
 {
   "mcpServers": {
     "diag-weaver": {
-      "command": "node",
-      "args": ["D:/Projects/diag-weaver/dist/index.js"]
+      "command": "diag-weaver"
     }
   }
 }
 ```
 
-开发时可改用 `npx tsx src/index.ts`。接上浏览器后可用 `node scripts/smoke-embed.mjs` 走一遍 Mermaid → 活画布（默认会等画布连上）。环境变量：
+不想装全局时，先 `pnpm build`，再用仓库脚本启动（把路径换成你的绝对路径）：
+
+```json
+{
+  "mcpServers": {
+    "diag-weaver": {
+      "command": "pnpm",
+      "args": ["--dir", "D:/Projects/diag-weaver", "start"]
+    }
+  }
+}
+```
+
+改源码后跑 `pnpm build` 即可，全局 bin 是 link 到本仓库的。改了 `package.json` 的 `bin` 或依赖再 `pnpm run link`。开发时可 `pnpm dev`（tsx 跑源码）。接上浏览器后可用 `node scripts/smoke-embed.mjs` 走一遍 Mermaid → 活画布。环境变量：
 
 | 变量 | 作用 |
 |------|------|

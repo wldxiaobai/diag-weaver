@@ -1,0 +1,3 @@
+# Single-package repo; omit packages to keep only the root.
+allowBuilds:
+  esbuild: true

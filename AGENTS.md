@@ -14,11 +14,11 @@ diag-weaver 是 **图编辑器为核、MCP 为手** 的绘图工具：用户用�
 ## 常用验证命令
 
 ```sh
-npm test
-npm run build
+pnpm test
+pnpm build
 ```
 
-活画布冒烟（需本机浏览器能打开编辑器页）：`node scripts/smoke-embed.mjs`。改 MCP 工具或存储行为后，至少跑 `npm test`；改 `web/editor.html` / embed 桥后应做一次画布冒烟，不得只凭单测声称「画布可用」。
+本地当 CLI 测 MCP：`pnpm run link`（构建后 `pnpm add -g .`，等价于旧的 `pnpm link --global`），然后配置里直接跑 `diag-weaver`。卸全局：`pnpm run unlink`。活画布冒烟（需本机浏览器能打开编辑器页）：`node scripts/smoke-embed.mjs`。改 MCP 工具或存储行为后，至少跑 `pnpm test`；改 `web/editor.html` / embed 桥后应做一次画布冒烟，不得只凭单测声称「画布可用」。
 
 - **不要**在 Agent cwd 自动创建 `graph-store` 或其它仓库目录。
 - **不要**把 `dist/`、`node_modules/`、`coverage/`、`smoke-result.json` 入库（见 `.gitignore`）。
