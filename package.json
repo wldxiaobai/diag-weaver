@@ -17,13 +17,18 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepack": "pnpm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "link": "pnpm run build && pnpm add -g .",
+    "unlink": "pnpm remove -g diag-weaver"
   },
+  "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "pnpm": ">=10"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
