@@ -168,8 +168,9 @@ export class BrowserHost implements EditorHost {
     this.socket?.close();
     this.socket = null;
     this.editorReady = false;
-    await new Promise<void>((resolve) => this.wss?.close(() => resolve()));
-    await new Promise<void>((resolve) => this.http?.close(() => resolve()));
+    // 懒启动下可能从未 listen 过,close 必须容忍 wss/http 尚不存在
+    await new Promise<void>((resolve) => (this.wss ? this.wss.close(() => resolve()) : resolve()));
+    await new Promise<void>((resolve) => (this.http ? this.http.close(() => resolve()) : resolve()));
     this.wss = undefined;
     this.http = undefined;
   }

@@ -112,6 +112,17 @@ describe("BrowserHost", () => {
     expect(html).toContain("proto=json");
   });
 
+  it("stays lazy: no port bound and not connected before listen/ensure", async () => {
+    const host = new BrowserHost({
+      getInitialXml: async () => null,
+      port: await freePort(),
+      openBrowser: false,
+    });
+    hosts.push(host);
+    expect(host.url).toBe("");
+    expect(host.isConnected()).toBe(false);
+  });
+
   it("rejects a bridge handshake from a foreign web page origin", async () => {
     const host = await listeningHost();
     const evil = track(new WebSocket(bridgeUrl(host), { origin: "http://evil.example" }));

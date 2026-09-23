@@ -12,9 +12,10 @@ async function main(): Promise<void> {
   });
   const app = new WeaverApp(store, host);
 
-  await host.listen();
+  // 懒启动:进程启动只接 stdio,不绑编辑器端口、不建目录;
+  // 首次 editor_ensure / diagram_replace 时 BrowserHost.ensure() 才 listen 并打开浏览器
   console.error(
-    `diag-weaver ready. store=${store.rootDir()} created=${await store.hasRoot()} (directories are created only on first real save)`,
+    `diag-weaver ready. store=${store.rootDir()} created=${await store.hasRoot()} (editor starts lazily on first editor_ensure; directories are created only on first real save)`,
   );
 
   const server = createMcpServer(app);
