@@ -80,6 +80,31 @@ describe("WeaverApp", () => {
     }
   });
 
+  it("patch requires and targets an explicit page for multi-page diagrams", async () => {
+    const app = appAt(path.join(await tempDir(), "store"));
+    const multiPage = `<mxfile host="test">
+      <diagram id="p1" name="架构"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="a" value="A" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>
+      </root></mxGraphModel></diagram>
+      <diagram id="p2" name="部署"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="b" value="B" vertex="1" parent="1"><mxGeometry x="40" y="40" width="140" height="60" as="geometry"/></mxCell>
+      </root></mxGraphModel></diagram>
+    </mxfile>`;
+    await app.replace({ content: multiPage, format: "drawio", layout: "none" });
+
+    await expect(
+      app.patch({ operations: [{ type: "add_node", id: "x", label: "X" }], layout: "none" }),
+    ).rejects.toThrow(/explicit page/);
+
+    const patched = await app.patch({
+      operations: [{ type: "add_node", id: "x", label: "X" }],
+      layout: "none",
+      page: "部署",
+    });
+    expect(patched.summary.pages[1].cells.some((cell) => cell.id === "x")).toBe(true);
+    expect(patched.summary.pages[0].cells.some((cell) => cell.id === "x")).toBe(false);
+  });
+
   it("registers the thin MCP tool surface", () => {
     const server = createMcpServer(appAt(path.join(os.tmpdir(), "unused")));
     const tools = Object.keys((server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools);

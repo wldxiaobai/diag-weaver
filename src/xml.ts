@@ -1,5 +1,5 @@
 import { BLANK_DIAGRAM } from "./blank-diagram.js";
-import type { CellSummary, DiagramSummary, PatchOp } from "./types.js";
+import type { CellSummary, DiagramSummary, PageRef, PatchOp } from "./types.js";
 
 export function detectFormat(content: string): "mermaid" | "drawio" {
   const t = content.trim();
@@ -33,7 +33,61 @@ function attr(tagAttrs: string, name: string): string | undefined {
   return m?.[1];
 }
 
-export function summarizeXml(xml: string): DiagramSummary {
+function escapeRe(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 一页 <diagram> 的内容区间;裸 mxGraphModel(无 mxfile 包裹)视为单页 */
+export type PageSpan = {
+  contentStart: number;
+  contentEnd: number;
+  id?: string;
+  name?: string;
+};
+
+export function findPages(xml: string): PageSpan[] {
+  const pages: PageSpan[] = [];
+  const re = /<diagram\b([^>]*)>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml))) {
+    const contentStart = re.lastIndex;
+    const close = xml.indexOf("</diagram>", contentStart);
+    const contentEnd = close === -1 ? xml.length : close;
+    pages.push({ contentStart, contentEnd, id: attr(m[1], "id"), name: attr(m[1], "name") });
+    re.lastIndex = contentEnd;
+  }
+  if (!pages.length) pages.push({ contentStart: 0, contentEnd: xml.length });
+  return pages;
+}
+
+function pageLabel(span: PageSpan, index: number): string {
+  return span.name || span.id || String(index + 1);
+}
+
+/** 解析目标页:单页可省略 page;多页必须显式指定,否则报错列出全部页 */
+export function resolvePageIndex(spans: PageSpan[], page: PageRef | undefined): number {
+  const known = spans.map(pageLabel).join(", ");
+  const matches = (span: PageSpan, index: number): boolean => {
+    if (page === undefined) return false;
+    if (typeof page === "number") return page === index + 1;
+    const needle = page.trim();
+    if (/^\d+$/.test(needle)) return Number(needle) === index + 1;
+    return needle === span.name || needle === span.id;
+  };
+  const idx = spans.findIndex(matches);
+  if (spans.length === 1) {
+    if (page === undefined || idx === 0) return 0;
+    throw new Error(`page not found: ${page}. known pages: ${known}`);
+  }
+  if (page === undefined) {
+    throw new Error(`diagram has ${spans.length} pages; pass an explicit page (one of: ${known})`);
+  }
+  if (idx === -1) throw new Error(`page not found: ${page}. known pages: ${known}`);
+  return idx;
+}
+
+/** 扫描单页内容区间,输出该页的 cell 列表 */
+function summarizeCells(xml: string): CellSummary[] {
   const cells: CellSummary[] = [];
   const seen = new Set<string>();
 
@@ -77,7 +131,18 @@ export function summarizeXml(xml: string): DiagramSummary {
       target: attr(attrs, "target"),
     });
   }
-  return { blank: cells.filter((cell) => cell.type === "node" || cell.type === "edge").length === 0, cells };
+  return cells;
+}
+
+export function summarizeXml(xml: string): DiagramSummary {
+  const pages = findPages(xml).map((span, index) => ({
+    index: index + 1,
+    id: span.id,
+    name: span.name,
+    cells: summarizeCells(xml.slice(span.contentStart, span.contentEnd)),
+  }));
+  const cells = pages.flatMap((page) => page.cells);
+  return { blank: cells.length === 0, cells, pages };
 }
 
 function existingIds(xml: string): Set<string> {
@@ -102,7 +167,7 @@ function freshId(ids: Set<string>, prefix: string): string {
 }
 
 function setCellValue(xml: string, id: string, label: string): string {
-  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedId = escapeRe(id);
   const escaped = escapeXml(label);
   const objectRe = new RegExp(`<UserObject\\b[^>]*\\bid="${escapedId}"[^>]*>`);
   const objectMatch = objectRe.exec(xml);
@@ -135,14 +200,21 @@ function insertBeforeRootEnd(xml: string, snippet: string): string {
   return xml.slice(0, idx) + snippet + xml.slice(idx);
 }
 
-export function applyPatch(xml: string, operations: PatchOp[]): string {
-  let next = xml.trim() ? xml : BLANK_DIAGRAM;
+/**
+ * 对目标页应用结构化补丁;所有查找与插入都限定在该页区间内,
+ * 避免多页图命中错误页或跨页 id 冲突。id 唯一性仍按全文件检查。
+ */
+export function applyPatch(xml: string, operations: PatchOp[], page?: PageRef): string {
+  const next = xml.trim() ? xml : BLANK_DIAGRAM;
+  const spans = findPages(next);
+  const span = spans[resolvePageIndex(spans, page)];
+  let segment = next.slice(span.contentStart, span.contentEnd);
   const ids = existingIds(next);
   const additions: string[] = [];
 
   for (const op of operations) {
     if (op.type === "set_label") {
-      next = setCellValue(next, op.id, op.label);
+      segment = setCellValue(segment, op.id, op.label);
       continue;
     }
     if (op.type === "add_node") {
@@ -163,6 +235,6 @@ export function applyPatch(xml: string, operations: PatchOp[]): string {
     );
   }
 
-  if (additions.length) next = insertBeforeRootEnd(next, additions.join(""));
-  return next;
+  if (additions.length) segment = insertBeforeRootEnd(segment, additions.join(""));
+  return next.slice(0, span.contentStart) + segment + next.slice(span.contentEnd);
 }

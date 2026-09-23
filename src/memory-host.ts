@@ -1,6 +1,6 @@
 import { BLANK_DIAGRAM } from "./blank-diagram.js";
 import { applyPatch, detectFormat } from "./xml.js";
-import type { EditorHost, EditorStatus, LoadOptions, PatchOp } from "./types.js";
+import type { EditorHost, EditorStatus, LoadOptions, PageRef, PatchOp } from "./types.js";
 
 /**
  * In-process canvas stand-in for tests. Not a product path.
@@ -39,8 +39,8 @@ export class MemoryHost implements EditorHost {
 
   async close(): Promise<void> {}
 
-  async applyOperations(ops: PatchOp[]): Promise<string> {
-    this.xml = applyPatch(this.xml, ops);
+  async applyOperations(ops: PatchOp[], page?: PageRef): Promise<string> {
+    this.xml = applyPatch(this.xml, ops, page);
     this.emit();
     return this.xml;
   }

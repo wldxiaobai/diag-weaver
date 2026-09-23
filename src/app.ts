@@ -2,7 +2,7 @@ import path from "node:path";
 import { BLANK_DIAGRAM } from "./blank-diagram.js";
 import { SnapshotStore } from "./store.js";
 import { applyPatch, detectFormat, isBlankDiagram, summarizeXml } from "./xml.js";
-import type { EditorHost, LayoutName, PatchOp } from "./types.js";
+import type { EditorHost, LayoutName, PageRef, PatchOp } from "./types.js";
 
 export class WeaverApp {
   constructor(
@@ -49,10 +49,10 @@ export class WeaverApp {
     return { empty: false, summary };
   }
 
-  async patch(args: { operations: PatchOp[]; layout?: LayoutName }) {
+  async patch(args: { operations: PatchOp[]; layout?: LayoutName; page?: PageRef }) {
     if (!args.operations.length) throw new Error("diagram_patch requires at least one operation");
     const xml0 = (await this.readXmlOptional()) ?? BLANK_DIAGRAM;
-    const xml1 = applyPatch(xml0, args.operations);
+    const xml1 = applyPatch(xml0, args.operations, args.page);
     const needsLayout = args.operations.some((op) => op.type !== "set_label");
     const layout: LayoutName = args.layout ?? (needsLayout ? "verticalFlow" : "none");
     const xml = await this.host.load({ xml: xml1, layout });

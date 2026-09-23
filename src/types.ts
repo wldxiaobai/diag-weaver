@@ -37,10 +37,25 @@ export type CellSummary = {
   target?: string;
 };
 
-export type DiagramSummary = {
-  blank: boolean;
+/** 单页摘要;index 为 1 起的页号 */
+export type PageSummary = {
+  index: number;
+  id?: string;
+  name?: string;
   cells: CellSummary[];
 };
+
+export type DiagramSummary = {
+  blank: boolean;
+  /** 跨页平铺视图,便于单页场景直接消费;多页时以 pages 分组为准 */
+  cells: CellSummary[];
+  pages: PageSummary[];
+};
+
+/** 页定位:1 起的页号,或页 name / id */
+export type PageRef = number | string;
+
+export type ExportFormat = "drawio" | "png" | "svg";
 
 export type SnapshotInfo = {
   label: string;
