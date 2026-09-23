@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { BrowserHost } from "../src/browser-host.js";
+import { BrowserHost, decodeExportData } from "../src/browser-host.js";
 
 const hosts: BrowserHost[] = [];
 const clients: WebSocket[] = [];
@@ -145,6 +145,29 @@ describe("BrowserHost", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
+  it("exportImage round-trips base64 png data through the bridge", async () => {
+    const host = await listeningHost();
+    const client = track(new WebSocket(bridgeUrl(host)));
+    await once(client, "open");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    client.on("message", (data) => {
+      const msg = JSON.parse(String(data)) as { action?: string; format?: string };
+      if (msg.action === "load") client.send(JSON.stringify({ event: "load" }));
+      if (msg.action === "export") {
+        if (msg.format === "png") {
+          client.send(
+            JSON.stringify({ event: "export", format: "png", data: `data:image/png;base64,${png.toString("base64")}` }),
+          );
+        } else {
+          client.send(JSON.stringify({ event: "export", xml: "<mxfile/>" }));
+        }
+      }
+    });
+    client.send(JSON.stringify({ event: "init" }));
+    const got = await host.exportImage("png");
+    expect(Buffer.from(got)).toEqual(png);
+  });
+
   it("fails pending requests when a second tab replaces the socket", async () => {
     const host = await listeningHost();
     const { secondExport } = await fakeEditor(host);
@@ -159,5 +182,31 @@ describe("BrowserHost", () => {
     await once(second, "open");
     expect(await outcome).toMatch(/replaced/i);
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+describe("decodeExportData", () => {
+  const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  it("decodes base64 data URLs", () => {
+    const decoded = decodeExportData(`data:image/png;base64,${pngBytes.toString("base64")}`, "png");
+    expect(Buffer.from(decoded)).toEqual(pngBytes);
+  });
+
+  it("decodes raw base64 without the data URL prefix", () => {
+    expect(Buffer.from(decodeExportData(pngBytes.toString("base64"), "png"))).toEqual(pngBytes);
+  });
+
+  it("decodes url-encoded svg data URLs", () => {
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg'/>";
+    const decoded = decodeExportData(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, "svg");
+    expect(Buffer.from(decoded).toString("utf8")).toBe(svg);
+  });
+
+  it("rejects empty or malformed payloads", () => {
+    expect(() => decodeExportData("", "png")).toThrow(/no png data/);
+    expect(() => decodeExportData(undefined, "svg")).toThrow(/no svg data/);
+    expect(() => decodeExportData("data:image/png;base64,", "png")).toThrow(/empty data/);
+    expect(() => decodeExportData("data:image/png", "png")).toThrow(/malformed data URL/);
   });
 });

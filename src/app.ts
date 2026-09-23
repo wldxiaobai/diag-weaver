@@ -2,7 +2,15 @@ import path from "node:path";
 import { BLANK_DIAGRAM } from "./blank-diagram.js";
 import { SnapshotStore } from "./store.js";
 import { applyPatch, detectFormat, isBlankDiagram, summarizeXml } from "./xml.js";
-import type { EditorHost, LayoutName, PageRef, PatchOp } from "./types.js";
+import type { EditorHost, ExportFormat, LayoutName, PageRef, PatchOp } from "./types.js";
+
+/** 未显式给 format 时按扩展名推断;.png/.svg 之外的都按 .drawio XML 处理 */
+function inferExportFormat(dest: string): ExportFormat {
+  const ext = path.extname(dest).toLowerCase();
+  if (ext === ".png") return "png";
+  if (ext === ".svg") return "svg";
+  return "drawio";
+}
 
 export class WeaverApp {
   /** autosave 写入串行化:连续拖拽触发的并发写按入队顺序落盘 */
@@ -77,14 +85,24 @@ export class WeaverApp {
     return { restored: label, summary: summarizeXml(xml) };
   }
 
-  async exportTo(filePath: string) {
+  async exportTo(filePath: string, format?: ExportFormat) {
     const trimmed = filePath.trim();
     if (!trimmed) throw new Error("diagram_export requires an explicit path");
-    const xml = await this.readXmlOptional();
-    if (!xml) throw new Error("no diagram to export");
     const dest = path.resolve(trimmed);
-    await this.store.exportTo(dest, xml);
-    return { path: dest };
+    const resolved: ExportFormat = format ?? inferExportFormat(dest);
+    if (resolved === "drawio") {
+      const xml = await this.readXmlOptional();
+      if (!xml) throw new Error("no diagram to export");
+      await this.store.exportTo(dest, xml);
+      return { path: dest, format: resolved };
+    }
+    // png/svg 由活画布渲染,红线不变:只有显式给出路径才写工作区
+    if (!this.host.isConnected()) {
+      throw new Error(`${resolved} export requires the live canvas; run editor_ensure first`);
+    }
+    const data = await this.host.exportImage(resolved);
+    await this.store.exportTo(dest, data);
+    return { path: dest, format: resolved };
   }
 
   async persistAutosave(xml: string): Promise<void> {

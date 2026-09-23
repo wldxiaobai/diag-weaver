@@ -68,7 +68,7 @@ Cursor MCP 配置（全局注册之后）：
 
 启动后 stderr 会打印编辑器 URL。`editor_ensure` 或第一次 `diagram_replace` 会打开浏览器。用户在画布上拖节点后，Agent 再 `diagram_read` 应能看到新位置。
 
-只有 `diagram_export` 在被明确给出路径时才往工作区写 `.drawio`。
+只有 `diagram_export` 在被明确给出路径时才往工作区写文件：默认导出 `.drawio` XML；也支持活画布渲染的 `png` / `svg` 图片（需要画布已连接，`format` 可显式指定，缺省按扩展名 `.png` / `.svg` 推断），方便把架构图直接插进 README / 文档。
 
 ## 明确不做
 

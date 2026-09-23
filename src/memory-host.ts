@@ -33,6 +33,10 @@ export class MemoryHost implements EditorHost {
     return this.xml;
   }
 
+  async exportImage(format: "png" | "svg"): Promise<Uint8Array> {
+    throw new Error(`MemoryHost cannot render ${format}; image export requires the live canvas`);
+  }
+
   onAutosave(handler: (xml: string) => void): void {
     this.autosaveHandlers.push(handler);
   }

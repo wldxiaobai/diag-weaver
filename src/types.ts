@@ -77,6 +77,8 @@ export interface EditorHost {
   ensure(): Promise<EditorStatus>;
   load(opts: LoadOptions): Promise<string>;
   readXml(): Promise<string>;
+  /** 由画布渲染并导出图片(png/svg 二进制);需要活画布连接 */
+  exportImage(format: "png" | "svg"): Promise<Uint8Array>;
   onAutosave(handler: (xml: string) => void): void;
   close(): Promise<void>;
 }

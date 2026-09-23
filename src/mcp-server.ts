@@ -179,14 +179,18 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_export",
     {
       description:
-        "Write the current diagram to an explicit filesystem path as .drawio. Relative paths resolve against the process cwd. Will not write unless path is provided.",
+        "Write the current diagram to an explicit filesystem path: .drawio XML by default, or a png/svg image rendered by the live canvas (requires a connected canvas; call editor_ensure first). Format defaults from the file extension. Relative paths resolve against the process cwd. Will not write unless path is provided.",
       inputSchema: z.object({
-        path: z.string().describe("Absolute or cwd-relative destination, e.g. ./docs/architecture.drawio"),
+        path: z.string().describe("Absolute or cwd-relative destination, e.g. ./docs/architecture.drawio or ./docs/architecture.png"),
+        format: z
+          .enum(["drawio", "png", "svg"])
+          .optional()
+          .describe("Export format. Defaults from the path extension (.png / .svg), otherwise drawio XML."),
       }),
     },
-    async ({ path: dest }) => {
+    async ({ path: dest, format }) => {
       try {
-        return ok(await app.exportTo(dest));
+        return ok(await app.exportTo(dest, format));
       } catch (err) {
         return fail(err);
       }

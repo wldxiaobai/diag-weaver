@@ -23,6 +23,13 @@ function appAt(storeRoot: string): WeaverApp {
   return new WeaverApp(new SnapshotStore(storeRoot), new MemoryHost());
 }
 
+/** 支持图片导出的测试桩:返回可识别的假字节 */
+class ImageHost extends MemoryHost {
+  async exportImage(format: "png" | "svg"): Promise<Uint8Array> {
+    return Buffer.from(format === "png" ? "fake-png-bytes" : "fake-svg-bytes");
+  }
+}
+
 describe("WeaverApp", () => {
   it("does not create graph-store or the user store on read/ensure", async () => {
     const workspace = await tempDir();
@@ -126,6 +133,47 @@ describe("WeaverApp", () => {
     expect(patched.layout).toBe("none");
     expect(patched.summary.cells.some((cell) => cell.id === "ingest")).toBe(false);
     expect(patched.summary.cells.some((cell) => cell.id === "weave")).toBe(true);
+  });
+
+  it("exports png/svg via the live canvas, inferring format from extension", async () => {
+    const workspace = await tempDir();
+    const app = new WeaverApp(new SnapshotStore(path.join(await tempDir(), "store")), new ImageHost());
+    const previous = process.cwd();
+    process.chdir(workspace);
+    try {
+      await app.replace({ content: "flowchart TD\n  a --> b" });
+
+      const png = await app.exportTo("./img/arch.png");
+      expect(png.format).toBe("png");
+      expect((await readFile(png.path)).toString("utf8")).toBe("fake-png-bytes");
+
+      // 显式 format 优先于扩展名
+      const svg = await app.exportTo("./img/arch.blob", "svg");
+      expect(svg.format).toBe("svg");
+      expect((await readFile(svg.path)).toString("utf8")).toBe("fake-svg-bytes");
+
+      const drawio = await app.exportTo("./img/arch.drawio");
+      expect(drawio.format).toBe("drawio");
+      expect(await readFile(drawio.path, "utf8")).toMatch(/vertex="1"|<mxfile/);
+
+      expect((await readdir(path.join(workspace, "img"))).sort()).toEqual(["arch.blob", "arch.drawio", "arch.png"]);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+
+  it("image export fails clearly without image-capable canvas", async () => {
+    const workspace = await tempDir();
+    const app = appAt(path.join(await tempDir(), "store"));
+    const previous = process.cwd();
+    process.chdir(workspace);
+    try {
+      await app.replace({ content: "flowchart TD\n  a --> b" });
+      await expect(app.exportTo("./img/arch.png")).rejects.toThrow(/live canvas/);
+      expect(await readdir(workspace)).toEqual([]);
+    } finally {
+      process.chdir(previous);
+    }
   });
 
   it("registers the thin MCP tool surface", () => {
