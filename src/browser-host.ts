@@ -88,7 +88,16 @@ export class BrowserHost implements EditorHost {
     const server = createServer((req, res) => {
       void this.handleHttp(req, res, html);
     });
-    this.wss = new WebSocketServer({ server, path: "/bridge" });
+    this.wss = new WebSocketServer({
+      server,
+      path: "/bridge",
+      // 浏览器发起的 WS 握手必带 Origin;只放行本机编辑器页。
+      // 无 Origin 的是非浏览器客户端(如桥协议测试的 ws 库),不属于「本机恶意网页」威胁模型。
+      verifyClient: (info, done) => {
+        if (!info.origin || this.isAllowedOrigin(info.origin)) done(true);
+        else done(false, 403, "origin not allowed");
+      },
+    });
     this.wss.on("connection", (ws) => this.onSocket(ws));
 
     let lastError: unknown;
@@ -134,11 +143,7 @@ export class BrowserHost implements EditorHost {
   }
 
   async close(): Promise<void> {
-    for (const waiter of this.waiters) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error("editor host closed"));
-    }
-    this.waiters.length = 0;
+    this.failWaiters(new Error("editor host closed"));
     this.socket?.close();
     this.socket = null;
     this.editorReady = false;
@@ -157,8 +162,33 @@ export class BrowserHost implements EditorHost {
     return run;
   }
 
+  private isAllowedOrigin(origin: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) return false;
+    // 只认本编辑器实际绑定的端口,避免本机其它服务的页面冒充
+    const selfPort = this._url ? new URL(this._url).port : "";
+    return parsed.port === selfPort;
+  }
+
+  /** socket 断开、被顶替或宿主关闭时,立即 reject 全部进行中的请求,不干等超时 */
+  private failWaiters(err: Error): void {
+    for (const waiter of this.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(err);
+    }
+  }
+
   private onSocket(ws: WebSocket): void {
-    this.socket?.close();
+    if (this.socket && this.socket !== ws) {
+      this.socket.close();
+      this.failWaiters(new Error("draw.io bridge replaced by a new connection"));
+    }
     this.socket = ws;
     this.editorReady = false;
     ws.on("message", (data) => {
@@ -175,6 +205,7 @@ export class BrowserHost implements EditorHost {
       if (this.socket === ws) {
         this.socket = null;
         this.editorReady = false;
+        this.failWaiters(new Error("draw.io bridge disconnected"));
       }
     });
   }
