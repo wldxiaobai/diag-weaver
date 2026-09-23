@@ -17,6 +17,7 @@ Agent ──MCP┘
 - **存储**：用户数据目录下的 `current.drawio` + `snapshots/<时间>-<标签>.drawio`。默认 Windows `%APPDATA%\diag-weaver`。进程握手、`tools/list`、空 `diagram_read` **不会 mkdir**，也不会在 Agent cwd 建 `graph-store`。
 - **工具面刻意少**：`editor_ensure`、`diagram_replace`、`diagram_read`、`diagram_patch`、`diagram_snapshot`、`diagram_restore`、`diagram_export`。
 - **多页图安全**：`diagram_read` 的 summary 按页分组（`summary.pages`，另有跨页平铺的 `cells`）；`diagram_patch` 始终只作用于一个页，多页图必须显式传 `page`（1 起的页号或页名），补丁查找与插入都限定在目标页内，跨页同名 id 不会误伤。
+- **结构化补丁**：`diagram_patch` 支持 `add_node` / `add_edge` / `set_label` / `remove_node` / `remove_edge`。删节点会级联删掉挂在其上的边；删元素请用 `remove_*` 而不是整图 `diagram_replace`，以保留用户手工布局。
 
 社区复用：画布用官方 embed.diagrams.net，不自研 mxGraph，不把 lgazo 的 30+ 格子级工具暴露给 Agent。lgazo / 官方 `@drawio/mcp` 负责「遥控格子 / 打开看看」；这里负责同一张图的本地生命周期（可见、可手改、可快照、不污染工作区）。
 

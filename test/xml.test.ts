@@ -108,3 +108,48 @@ describe("multi-page safety", () => {
     expect(() => applyPatch(BLANK_DIAGRAM, [{ type: "add_node", label: "A" }], 1)).not.toThrow();
   });
 });
+
+describe("remove operations", () => {
+  const base = applyPatch(BLANK_DIAGRAM, [
+    { type: "add_node", id: "a", label: "A" },
+    { type: "add_node", id: "b", label: "B" },
+    { type: "add_edge", id: "e1", source: "a", target: "b", label: "go" },
+  ]);
+
+  it("remove_edge deletes only the edge", () => {
+    const summary = summarizeXml(applyPatch(base, [{ type: "remove_edge", id: "e1" }]));
+    expect(summary.cells.map((cell) => cell.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("remove_node cascades attached edges", () => {
+    const summary = summarizeXml(applyPatch(base, [{ type: "remove_node", id: "a" }]));
+    expect(summary.cells.map((cell) => cell.id)).toEqual(["b"]);
+  });
+
+  it("removes UserObject-wrapped cells with their geometry", () => {
+    const xml = `<mxfile><diagram><mxGraphModel><root>
+      <mxCell id="0"/>
+      <mxCell id="1" parent="0"/>
+      <UserObject label="User" id="u1"><mxCell vertex="1" parent="1"><mxGeometry x="0" y="0" width="10" height="10" as="geometry"/></mxCell></UserObject>
+      <UserObject label="link" id="ue1"><mxCell edge="1" parent="1" source="u1" target="u1"><mxGeometry relative="1" as="geometry"/></mxCell></UserObject>
+    </root></mxGraphModel></diagram></mxfile>`;
+    const patched = applyPatch(xml, [{ type: "remove_node", id: "u1" }]);
+    expect(patched).not.toContain("u1");
+    expect(summarizeXml(patched).cells).toEqual([]);
+    expect(summarizeXml(patched).blank).toBe(true);
+  });
+
+  it("rejects unknown ids, wrong kinds, and root cells", () => {
+    expect(() => applyPatch(base, [{ type: "remove_node", id: "missing" }])).toThrow(/cell not found/);
+    expect(() => applyPatch(base, [{ type: "remove_edge", id: "a" }])).toThrow(/not an edge/);
+    expect(() => applyPatch(base, [{ type: "remove_node", id: "e1" }])).toThrow(/not a node/);
+    expect(() => applyPatch(base, [{ type: "remove_node", id: "1" }])).toThrow(/cell not found/);
+  });
+
+  it("removes only within the target page", () => {
+    const patched = applyPatch(MULTI_PAGE, [{ type: "remove_node", id: "shared" }], "架构");
+    const summary = summarizeXml(patched);
+    expect(summary.pages[0].cells).toEqual([]);
+    expect(summary.pages[1].cells.map((cell) => cell.id)).toEqual(["shared"]);
+  });
+});

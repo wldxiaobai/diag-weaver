@@ -33,6 +33,14 @@ const patchOpSchema = z.discriminatedUnion("type", [
     id: z.string(),
     label: z.string(),
   }),
+  z.object({
+    type: z.literal("remove_node"),
+    id: z.string().describe("Node id; edges attached to it are removed as well"),
+  }),
+  z.object({
+    type: z.literal("remove_edge"),
+    id: z.string().describe("Edge id"),
+  }),
 ]);
 
 const pageSchema = z
@@ -115,7 +123,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_patch",
     {
       description:
-        "Apply a few structured edits (add_node, add_edge, set_label). Do not supply x/y; draw.io layout places new cells. Coordinates belong to the editor, not the model. Patches always target one page: pass page (index or name) for multi-page diagrams.",
+        "Apply a few structured edits (add_node, add_edge, set_label, remove_node, remove_edge). Prefer remove_* over diagram_replace when deleting elements, so the user's manual layout survives. Do not supply x/y; draw.io layout places new cells. Coordinates belong to the editor, not the model. Patches always target one page: pass page (index or name) for multi-page diagrams.",
       inputSchema: z.object({
         operations: z.array(patchOpSchema).min(1),
         layout: layoutSchema.optional(),

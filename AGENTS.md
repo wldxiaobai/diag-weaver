@@ -28,7 +28,7 @@ pnpm build
 
 入口 `src/index.ts`：stdio MCP + 懒启动的本地 HTTP 编辑器。`WeaverApp` 编排 `SnapshotStore` 与 `EditorHost`。用户拖拽与 Agent `load`/`replace` 共用一份 XML；autosave 进 `current`（空白图且尚无 current 时不落盘）。恢复 = 快照 copy 成 current 再 `load`，没有 Draft/Stage/Commit。
 
-布局交给 draw.io（embed `layout` / Arrange），不要与自研几何双写。`diagram_patch` 只允许结构化补丁（加框、连线、改字），坐标交给编辑器。
+布局交给 draw.io（embed `layout` / Arrange），不要与自研几何双写。`diagram_patch` 只允许结构化补丁（加框、连线、改字、删元素），坐标交给编辑器；多页图必须显式指定 `page`。
 
 ## 重要工程约束
 

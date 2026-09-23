@@ -56,7 +56,8 @@ export class WeaverApp {
     if (!args.operations.length) throw new Error("diagram_patch requires at least one operation");
     const xml0 = (await this.readXmlOptional()) ?? BLANK_DIAGRAM;
     const xml1 = applyPatch(xml0, args.operations, args.page);
-    const needsLayout = args.operations.some((op) => op.type !== "set_label");
+    // set_label 与 remove_* 不新增元素,不触发重排,保护用户手工布局
+    const needsLayout = args.operations.some((op) => op.type === "add_node" || op.type === "add_edge");
     const layout: LayoutName = args.layout ?? (needsLayout ? "verticalFlow" : "none");
     const xml = await this.host.load({ xml: xml1, layout });
     await this.persistAutosave(xml);

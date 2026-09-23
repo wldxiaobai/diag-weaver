@@ -67,7 +67,9 @@ export type SnapshotInfo = {
 export type PatchOp =
   | { type: "add_node"; id?: string; label: string; style?: string }
   | { type: "add_edge"; id?: string; source: string; target: string; label?: string; style?: string }
-  | { type: "set_label"; id: string; label: string };
+  | { type: "set_label"; id: string; label: string }
+  | { type: "remove_node"; id: string }
+  | { type: "remove_edge"; id: string };
 
 export interface EditorHost {
   readonly url: string;

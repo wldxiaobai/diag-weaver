@@ -200,6 +200,62 @@ function insertBeforeRootEnd(xml: string, snippet: string): string {
   return xml.slice(0, idx) + snippet + xml.slice(idx);
 }
 
+/** 取 cell 的属性串;UserObject 包裹时 id 在外层、vertex/edge 在内层 mxCell */
+function cellAttrs(segment: string, id: string): { attrs: string; inner: string } | null {
+  const esc = escapeRe(id);
+  const uo = new RegExp(`<UserObject\\b([^>]*\\bid="${esc}"[^>]*)>([\\s\\S]*?)</UserObject>`).exec(segment);
+  if (uo) return { attrs: uo[1], inner: uo[2] };
+  const cell = new RegExp(`<mxCell\\b([^>]*\\bid="${esc}"[^>]*?)/?>`).exec(segment);
+  if (cell) return { attrs: cell[1], inner: "" };
+  return null;
+}
+
+function cellKindIn(segment: string, id: string): "node" | "edge" | null {
+  const found = cellAttrs(segment, id);
+  if (!found) return null;
+  const hay = `${found.attrs} ${found.inner}`;
+  if (/\bvertex="(?:1|true)"/.test(hay)) return "node";
+  if (/\bedge="(?:1|true)"/.test(hay)) return "edge";
+  // id="0"/id="1" 等根 cell 不算可删元素
+  return null;
+}
+
+/** 找出页内挂在某节点上的边(边 id 可能在包裹的 UserObject 上) */
+function edgesTouching(segment: string, node: string): string[] {
+  const touches = (attrs: string): boolean =>
+    /\bedge="(?:1|true)"/.test(attrs) && (attr(attrs, "source") === node || attr(attrs, "target") === node);
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const objects = /<UserObject\b([^>]*)>([\s\S]*?)<\/UserObject>/g;
+  let m: RegExpExecArray | null;
+  while ((m = objects.exec(segment))) {
+    const id = attr(m[1], "id");
+    if (!id) continue;
+    seen.add(id);
+    if (touches(m[2])) found.push(id);
+  }
+  const cells = /<mxCell\b([^>]*?)\/?>/g;
+  while ((m = cells.exec(segment))) {
+    const id = attr(m[1], "id");
+    if (!id || seen.has(id)) continue;
+    if (touches(m[1])) found.push(id);
+  }
+  return found;
+}
+
+/** 从页内删除整个 cell 元素(含 UserObject 包裹与 mxGeometry 子节点) */
+function cutCell(segment: string, id: string): string {
+  const esc = escapeRe(id);
+  const patterns = [
+    new RegExp(`[ \\t]*<UserObject\\b[^>]*\\bid="${esc}"[^>]*>[\\s\\S]*?</UserObject>[ \\t]*\\r?\\n?`),
+    new RegExp(`[ \\t]*<mxCell\\b[^>]*\\bid="${esc}"[^>]*?(?:/>|>[\\s\\S]*?</mxCell>)[ \\t]*\\r?\\n?`),
+  ];
+  for (const re of patterns) {
+    if (re.test(segment)) return segment.replace(re, "");
+  }
+  return segment;
+}
+
 /**
  * 对目标页应用结构化补丁;所有查找与插入都限定在该页区间内,
  * 避免多页图命中错误页或跨页 id 冲突。id 唯一性仍按全文件检查。
@@ -215,6 +271,16 @@ export function applyPatch(xml: string, operations: PatchOp[], page?: PageRef): 
   for (const op of operations) {
     if (op.type === "set_label") {
       segment = setCellValue(segment, op.id, op.label);
+      continue;
+    }
+    if (op.type === "remove_node" || op.type === "remove_edge") {
+      const kind = cellKindIn(segment, op.id);
+      if (!kind) throw new Error(`cell not found: ${op.id}`);
+      if (op.type === "remove_node" && kind !== "node") throw new Error(`cell is not a node: ${op.id}`);
+      if (op.type === "remove_edge" && kind !== "edge") throw new Error(`cell is not an edge: ${op.id}`);
+      // 删节点级联删挂在其上的边,避免留下悬空连线
+      const doomed = kind === "node" ? [op.id, ...edgesTouching(segment, op.id)] : [op.id];
+      for (const id of doomed) segment = cutCell(segment, id);
       continue;
     }
     if (op.type === "add_node") {

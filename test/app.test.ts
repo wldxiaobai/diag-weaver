@@ -119,6 +119,15 @@ describe("WeaverApp", () => {
     expect(patched.summary.pages[0].cells.some((cell) => cell.id === "x")).toBe(false);
   });
 
+  it("remove ops delete cells without triggering relayout", async () => {
+    const app = appAt(path.join(await tempDir(), "store"));
+    await app.replace({ content: "flowchart TD\n  ingest --> weave" });
+    const patched = await app.patch({ operations: [{ type: "remove_node", id: "ingest" }] });
+    expect(patched.layout).toBe("none");
+    expect(patched.summary.cells.some((cell) => cell.id === "ingest")).toBe(false);
+    expect(patched.summary.cells.some((cell) => cell.id === "weave")).toBe(true);
+  });
+
   it("registers the thin MCP tool surface", () => {
     const server = createMcpServer(appAt(path.join(os.tmpdir(), "unused")));
     const tools = Object.keys((server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools);
