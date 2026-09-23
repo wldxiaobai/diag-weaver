@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile, access } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, unlink, writeFile, access } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import type { SnapshotInfo } from "./types.js";
@@ -9,6 +10,23 @@ async function exists(filePath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * 原子写:先写同目录临时文件再 rename。
+ * 进程中途被 kill 时目标文件要么是旧内容、要么是完整新内容,不会留半截。
+ */
+export async function atomicWriteFile(file: string, data: string | Uint8Array): Promise<void> {
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`);
+  try {
+    await writeFile(tmp, data);
+    await rename(tmp, file);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
   }
 }
 
@@ -73,8 +91,7 @@ export class SnapshotStore {
   }
 
   async writeCurrent(xml: string): Promise<void> {
-    await mkdir(this.root, { recursive: true });
-    await writeFile(this.currentFile(), xml, "utf8");
+    await atomicWriteFile(this.currentFile(), xml);
   }
 
   async snapshot(label: string, xml: string): Promise<SnapshotInfo> {
@@ -84,7 +101,7 @@ export class SnapshotStore {
     const safe = sanitizeLabel(label);
     const file = `${stamp()}-${safe}.drawio`;
     const dest = path.join(this.snapshotsDir(), file);
-    await writeFile(dest, xml, "utf8");
+    await atomicWriteFile(dest, xml);
     return { label: safe, file, path: dest, createdAt };
   }
 
@@ -123,8 +140,7 @@ export class SnapshotStore {
     return xml;
   }
 
-  async exportTo(absPath: string, xml: string): Promise<void> {
-    await mkdir(path.dirname(absPath), { recursive: true });
-    await writeFile(absPath, xml, "utf8");
+  async exportTo(absPath: string, data: string | Uint8Array): Promise<void> {
+    await atomicWriteFile(absPath, data);
   }
 }

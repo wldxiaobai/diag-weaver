@@ -5,6 +5,9 @@ import { applyPatch, detectFormat, isBlankDiagram, summarizeXml } from "./xml.js
 import type { EditorHost, LayoutName, PageRef, PatchOp } from "./types.js";
 
 export class WeaverApp {
+  /** autosave 写入串行化:连续拖拽触发的并发写按入队顺序落盘 */
+  private autosaveChain: Promise<void> = Promise.resolve();
+
   constructor(
     readonly store: SnapshotStore,
     readonly host: EditorHost,
@@ -84,6 +87,12 @@ export class WeaverApp {
   }
 
   async persistAutosave(xml: string): Promise<void> {
+    const run = this.autosaveChain.then(() => this.writeAutosave(xml));
+    this.autosaveChain = run.catch(() => {});
+    return run;
+  }
+
+  private async writeAutosave(xml: string): Promise<void> {
     try {
       if (isBlankDiagram(xml) && !(await this.store.hasCurrent())) return;
       await this.store.writeCurrent(xml);

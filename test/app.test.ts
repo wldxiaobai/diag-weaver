@@ -80,6 +80,20 @@ describe("WeaverApp", () => {
     }
   });
 
+  it("serializes concurrent autosave writes so the file is always complete", async () => {
+    const storeRoot = path.join(await tempDir(), "store");
+    const app = appAt(storeRoot);
+    const xmls = Array.from(
+      { length: 10 },
+      (_, i) => `<mxfile><diagram name="d${i}"><mxGraphModel><root><mxCell id="0"/><mxCell id="v${i}" vertex="1" parent="1"/>${"<!-- pad -->".repeat(64)}</root></mxGraphModel></diagram></mxfile>`,
+    );
+    // 模拟连续拖拽:不等待前一次落盘就触发下一次
+    await Promise.all(xmls.map((xml) => app.persistAutosave(xml)));
+    const final = await readFile(path.join(storeRoot, "current.drawio"), "utf8");
+    expect(final).toBe(xmls[9]);
+    expect(final).toMatch(/^<mxfile>[\s\S]*<\/mxfile>$/);
+  });
+
   it("patch requires and targets an explicit page for multi-page diagrams", async () => {
     const app = appAt(path.join(await tempDir(), "store"));
     const multiPage = `<mxfile host="test">

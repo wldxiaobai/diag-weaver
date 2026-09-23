@@ -46,6 +46,20 @@ describe("SnapshotStore", () => {
     expect(await store.readCurrent()).toBe("<mxfile>a</mxfile>");
   });
 
+  it("concurrent writeCurrent calls always leave a complete file and no temp junk", async () => {
+    const root = path.join(await tempDir(), "store");
+    const store = new SnapshotStore(root);
+    const xmls = Array.from(
+      { length: 25 },
+      (_, i) => `<mxfile><diagram name="p${i}">${"x".repeat(2048)}</diagram></mxfile>`,
+    );
+    await Promise.all(xmls.map((xml) => store.writeCurrent(xml)));
+    const final = await store.readCurrent();
+    expect(xmls).toContain(final);
+    expect(final).toMatch(/^<mxfile>[\s\S]*<\/mxfile>$/);
+    expect(await readdir(root)).toEqual(["current.drawio"]);
+  });
+
   it("exportTo writes only the explicit path", async () => {
     const workspace = await tempDir();
     const root = path.join(await tempDir(), "store");
