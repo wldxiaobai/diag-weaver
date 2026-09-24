@@ -146,6 +146,43 @@ describe("remove operations", () => {
     expect(() => applyPatch(base, [{ type: "remove_node", id: "1" }])).toThrow(/cell not found/);
   });
 
+  it("removes a nested group without leaving a dangling close tag", () => {
+    const xml = `<mxfile><diagram><mxGraphModel><root>
+      <mxCell id="0"/>
+      <mxCell id="1" parent="0"/>
+      <mxCell id="g" value="Group" style="group;" vertex="1" parent="1">
+        <mxGeometry x="0" y="0" width="200" height="120" as="geometry"/>
+        <mxCell id="c" value="Child" vertex="1" parent="g">
+          <mxGeometry x="10" y="10" width="80" height="40" as="geometry"/>
+        </mxCell>
+      </mxCell>
+      <mxCell id="keep" value="Keep" vertex="1" parent="1">
+        <mxGeometry x="240" y="40" width="80" height="40" as="geometry"/>
+      </mxCell>
+    </root></mxGraphModel></diagram></mxfile>`;
+    const patched = applyPatch(xml, [{ type: "remove_node", id: "g" }]);
+    expect(patched).not.toContain('id="g"');
+    expect(patched).not.toContain('id="c"');
+    const opens = patched.match(/<mxCell\b[^>]*[^/]>/g)?.length ?? 0;
+    expect(patched.match(/<\/mxCell>/g)?.length ?? 0).toBe(opens);
+    expect(summarizeXml(patched).cells.map((cell) => cell.id)).toEqual(["keep"]);
+  });
+
+  it("cascades sibling children and edges that reference them", () => {
+    const xml = `<mxfile><diagram><mxGraphModel><root>
+      <mxCell id="0"/>
+      <mxCell id="1" parent="0"/>
+      <mxCell id="g" value="Lane" vertex="1" parent="1"><mxGeometry x="0" y="0" width="200" height="80" as="geometry"/></mxCell>
+      <mxCell id="c" value="InLane" vertex="1" parent="g"><mxGeometry x="20" y="20" width="80" height="40" as="geometry"/></mxCell>
+      <mxCell id="out" value="Out" vertex="1" parent="1"><mxGeometry x="240" y="20" width="80" height="40" as="geometry"/></mxCell>
+      <mxCell id="e" edge="1" parent="1" source="c" target="out"><mxGeometry relative="1" as="geometry"/></mxCell>
+    </root></mxGraphModel></diagram></mxfile>`;
+    const patched = applyPatch(xml, [{ type: "remove_node", id: "g" }]);
+    expect(summarizeXml(patched).cells.map((cell) => cell.id)).toEqual(["out"]);
+    expect(patched).not.toContain('parent="g"');
+    expect(patched).not.toContain('id="e"');
+  });
+
   it("removes only within the target page", () => {
     const patched = applyPatch(MULTI_PAGE, [{ type: "remove_node", id: "shared" }], "架构");
     const summary = summarizeXml(patched);

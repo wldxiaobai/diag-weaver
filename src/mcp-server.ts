@@ -35,7 +35,7 @@ const patchOpSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("remove_node"),
-    id: z.string().describe("Node id; edges attached to it are removed as well"),
+    id: z.string().describe("Node id; child cells and edges attached to the removed cells are removed as well"),
   }),
   z.object({
     type: z.literal("remove_edge"),

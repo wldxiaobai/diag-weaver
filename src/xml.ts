@@ -220,11 +220,24 @@ function cellKindIn(segment: string, id: string): "node" | "edge" | null {
   return null;
 }
 
-/** 找出页内挂在某节点上的边(边 id 可能在包裹的 UserObject 上) */
-function edgesTouching(segment: string, node: string): string[] {
-  const touches = (attrs: string): boolean =>
-    /\bedge="(?:1|true)"/.test(attrs) && (attr(attrs, "source") === node || attr(attrs, "target") === node);
-  const found: string[] = [];
+type ListedCell = {
+  id: string;
+  parent?: string;
+  source?: string;
+  target?: string;
+  kind: "node" | "edge" | "other";
+};
+
+function cellKindOf(attrs: string, inner = ""): ListedCell["kind"] {
+  const hay = `${attrs} ${inner}`;
+  if (/\bvertex="(?:1|true)"/.test(hay)) return "node";
+  if (/\bedge="(?:1|true)"/.test(hay)) return "edge";
+  return "other";
+}
+
+/** 页内 cell 清单。UserObject 的 id 在外层,parent/source/target 通常在内层 mxCell。 */
+function listCells(segment: string): ListedCell[] {
+  const found: ListedCell[] = [];
   const seen = new Set<string>();
   const objects = /<UserObject\b([^>]*)>([\s\S]*?)<\/UserObject>/g;
   let m: RegExpExecArray | null;
@@ -232,28 +245,92 @@ function edgesTouching(segment: string, node: string): string[] {
     const id = attr(m[1], "id");
     if (!id) continue;
     seen.add(id);
-    if (touches(m[2])) found.push(id);
+    found.push({
+      id,
+      parent: attr(m[2], "parent") ?? attr(m[1], "parent"),
+      source: attr(m[2], "source") ?? attr(m[1], "source"),
+      target: attr(m[2], "target") ?? attr(m[1], "target"),
+      kind: cellKindOf(m[1], m[2]),
+    });
   }
   const cells = /<mxCell\b([^>]*?)\/?>/g;
   while ((m = cells.exec(segment))) {
     const id = attr(m[1], "id");
     if (!id || seen.has(id)) continue;
-    if (touches(m[1])) found.push(id);
+    found.push({
+      id,
+      parent: attr(m[1], "parent"),
+      source: attr(m[1], "source"),
+      target: attr(m[1], "target"),
+      kind: cellKindOf(m[1]),
+    });
   }
   return found;
 }
 
-/** 从页内删除整个 cell 元素(含 UserObject 包裹与 mxGeometry 子节点) */
-function cutCell(segment: string, id: string): string {
-  const esc = escapeRe(id);
-  const patterns = [
-    new RegExp(`[ \\t]*<UserObject\\b[^>]*\\bid="${esc}"[^>]*>[\\s\\S]*?</UserObject>[ \\t]*\\r?\\n?`),
-    new RegExp(`[ \\t]*<mxCell\\b[^>]*\\bid="${esc}"[^>]*?(?:/>|>[\\s\\S]*?</mxCell>)[ \\t]*\\r?\\n?`),
-  ];
-  for (const re of patterns) {
-    if (re.test(segment)) return segment.replace(re, "");
+/** 节点本身、parent 链上的子孙,以及 source/target 碰到这批节点的边 */
+function removalIds(segment: string, nodeId: string): string[] {
+  const cells = listCells(segment);
+  const children = new Map<string, string[]>();
+  for (const cell of cells) {
+    if (!cell.parent || cell.id === "0" || cell.id === "1") continue;
+    const list = children.get(cell.parent) ?? [];
+    list.push(cell.id);
+    children.set(cell.parent, list);
   }
-  return segment;
+  const nodes = new Set<string>();
+  const stack = [nodeId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (!id || nodes.has(id)) continue;
+    nodes.add(id);
+    for (const child of children.get(id) ?? []) stack.push(child);
+  }
+  const doomed = new Set(nodes);
+  for (const cell of cells) {
+    if (cell.kind !== "edge") continue;
+    if ((cell.source && nodes.has(cell.source)) || (cell.target && nodes.has(cell.target))) doomed.add(cell.id);
+  }
+  return [...doomed];
+}
+
+/** 从开标签之后配对同名结束标签,忽略自闭合;找不到则返回 -1 */
+function matchingClose(segment: string, from: number, tag: string): number {
+  const token = new RegExp(`<${tag}\\b[^>]*?/?>|</${tag}>`, "g");
+  token.lastIndex = from;
+  let depth = 1;
+  let m: RegExpExecArray | null;
+  while ((m = token.exec(segment))) {
+    if (m[0].startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) return token.lastIndex;
+    } else if (!m[0].endsWith("/>")) {
+      depth += 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 删掉整个元素。嵌套的同名子标签按深度配对,避免在第一个 </mxCell> 处截断。
+ * 元素已不在片段里(被外层一起切掉)时返回 null。
+ */
+function cutCell(segment: string, id: string): string | null {
+  const esc = escapeRe(id);
+  const open = new RegExp(`<(UserObject|mxCell)\\b[^>]*\\bid="${esc}"[^>]*?/?>`).exec(segment);
+  if (!open) return null;
+  let start = open.index;
+  let end = open.index + open[0].length;
+  if (!open[0].endsWith("/>")) {
+    const close = matchingClose(segment, end, open[1]);
+    if (close === -1) return null;
+    end = close;
+  }
+  const lineStart = segment.lastIndexOf("\n", start - 1) + 1;
+  if (/^[ \t]*$/.test(segment.slice(lineStart, start))) start = lineStart;
+  const trail = /^[ \t]*\r?\n/.exec(segment.slice(end));
+  if (trail) end += trail[0].length;
+  return segment.slice(0, start) + segment.slice(end);
 }
 
 /**
@@ -278,9 +355,16 @@ export function applyPatch(xml: string, operations: PatchOp[], page?: PageRef): 
       if (!kind) throw new Error(`cell not found: ${op.id}`);
       if (op.type === "remove_node" && kind !== "node") throw new Error(`cell is not a node: ${op.id}`);
       if (op.type === "remove_edge" && kind !== "edge") throw new Error(`cell is not an edge: ${op.id}`);
-      // 删节点级联删挂在其上的边,避免留下悬空连线
-      const doomed = kind === "node" ? [op.id, ...edgesTouching(segment, op.id)] : [op.id];
-      for (const id of doomed) segment = cutCell(segment, id);
+      // 删节点时连带子孙 cell 和挂在这批节点上的边,避免留下悬空 parent / 连线
+      const doomed = kind === "node" ? removalIds(segment, op.id) : [op.id];
+      for (const id of doomed) {
+        const cut = cutCell(segment, id);
+        if (cut === null) {
+          if (id === op.id) throw new Error(`cell not found: ${op.id}`);
+          continue;
+        }
+        segment = cut;
+      }
       continue;
     }
     if (op.type === "add_node") {
