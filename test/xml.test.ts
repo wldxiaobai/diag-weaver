@@ -100,6 +100,15 @@ describe("multi-page safety", () => {
     expect(summary.pages[1].cells[0].label).toBe("Page2Node");
   });
 
+  it("keeps a caller id that already exists on another page", () => {
+    const withOnly = applyPatch(MULTI_PAGE, [{ type: "add_node", id: "only-p1", label: "P1" }], 1);
+    const patched = applyPatch(withOnly, [{ type: "add_node", id: "only-p1", label: "P2" }], 2);
+    const summary = summarizeXml(patched);
+    expect(summary.pages[0].cells.map((cell) => cell.id)).toEqual(["shared", "only-p1"]);
+    expect(summary.pages[1].cells.map((cell) => cell.id)).toEqual(["shared", "only-p1"]);
+    expect(summary.pages[1].cells.map((cell) => cell.label)).toEqual(["Page2Node", "P2"]);
+  });
+
   it("single-page diagrams still patch without page argument", () => {
     const patched = applyPatch(BLANK_DIAGRAM, [{ type: "add_node", id: "a", label: "A" }]);
     expect(summarizeXml(patched).pages).toHaveLength(1);
@@ -181,6 +190,20 @@ describe("remove operations", () => {
     expect(summarizeXml(patched).cells.map((cell) => cell.id)).toEqual(["out"]);
     expect(patched).not.toContain('parent="g"');
     expect(patched).not.toContain('id="e"');
+  });
+
+  it("reuses an id removed earlier in the same patch", () => {
+    const patched = applyPatch(base, [
+      { type: "remove_node", id: "a" },
+      { type: "add_node", id: "a", label: "A2" },
+    ]);
+    const cell = summarizeXml(patched).cells.find((item) => item.id === "a");
+    expect(cell?.label).toBe("A2");
+  });
+
+  it("rejects an id that is still on the target page", () => {
+    expect(() => applyPatch(base, [{ type: "add_node", id: "a", label: "dup" }])).toThrow(/id already exists/);
+    expect(() => applyPatch(base, [{ type: "add_edge", id: "e1", source: "a", target: "b" }])).toThrow(/id already exists/);
   });
 
   it("removes only within the target page", () => {

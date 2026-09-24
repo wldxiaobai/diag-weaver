@@ -333,16 +333,24 @@ function cutCell(segment: string, id: string): string | null {
   return segment.slice(0, start) + segment.slice(end);
 }
 
+/** 调用方指定了 id 时必须原样使用;本页已占用则报错,不悄悄换一个新 id */
+function allocId(pageIds: Set<string>, requested: string | undefined, prefix: string): string {
+  if (!requested) return freshId(pageIds, prefix);
+  if (pageIds.has(requested)) throw new Error(`id already exists: ${requested}`);
+  pageIds.add(requested);
+  return requested;
+}
+
 /**
  * 对目标页应用结构化补丁;所有查找与插入都限定在该页区间内,
- * 避免多页图命中错误页或跨页 id 冲突。id 唯一性仍按全文件检查。
+ * 避免多页图命中错误页。id 是否冲突只看目标页,跨页同名可以保留。
  */
 export function applyPatch(xml: string, operations: PatchOp[], page?: PageRef): string {
   const next = xml.trim() ? xml : BLANK_DIAGRAM;
   const spans = findPages(next);
   const span = spans[resolvePageIndex(spans, page)];
   let segment = next.slice(span.contentStart, span.contentEnd);
-  const ids = existingIds(next);
+  let pageIds = existingIds(segment);
   const additions: string[] = [];
 
   for (const op of operations) {
@@ -365,19 +373,18 @@ export function applyPatch(xml: string, operations: PatchOp[], page?: PageRef): 
         }
         segment = cut;
       }
+      pageIds = existingIds(segment);
       continue;
     }
     if (op.type === "add_node") {
-      const id = op.id && !ids.has(op.id) ? op.id : freshId(ids, "n");
-      if (op.id) ids.add(id);
+      const id = allocId(pageIds, op.id, "n");
       const style = op.style ?? "rounded=1;whiteSpace=wrap;html=1;";
       additions.push(
         `        <mxCell id="${escapeXml(id)}" value="${escapeXml(op.label)}" style="${escapeXml(style)}" vertex="1" parent="1">\n          <mxGeometry x="40" y="40" width="140" height="60" as="geometry"/>\n        </mxCell>\n`,
       );
       continue;
     }
-    const id = op.id && !ids.has(op.id) ? op.id : freshId(ids, "e");
-    if (op.id) ids.add(id);
+    const id = allocId(pageIds, op.id, "e");
     const style = op.style ?? "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;";
     const value = op.label ? ` value="${escapeXml(op.label)}"` : "";
     additions.push(
