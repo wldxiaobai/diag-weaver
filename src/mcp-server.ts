@@ -33,7 +33,20 @@ const patchOpSchema = z.discriminatedUnion("type", [
     id: z.string(),
     label: z.string(),
   }),
+  z.object({
+    type: z.literal("remove_node"),
+    id: z.string().describe("Node id; child cells and edges attached to the removed cells are removed as well"),
+  }),
+  z.object({
+    type: z.literal("remove_edge"),
+    id: z.string().describe("Edge id"),
+  }),
 ]);
+
+const pageSchema = z
+  .union([z.number().int().positive(), z.string()])
+  .optional()
+  .describe("Target page: 1-based index or page name/id. Required when the diagram has multiple pages; optional for single-page diagrams.");
 
 function ok(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -92,7 +105,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_read",
     {
       description:
-        "Read the current diagram. Default is a compact cell summary for the agent. Pass format=xml for the full draw.io XML. Uses the live canvas if connected, otherwise the saved current.drawio. Does not create directories.",
+        "Read the current diagram. Default is a compact cell summary for the agent, grouped per page (summary.pages). Pass format=xml for the full draw.io XML. Uses the live canvas if connected, otherwise the saved current.drawio. Does not create directories.",
       inputSchema: z.object({
         format: z.enum(["summary", "xml"]).optional(),
       }),
@@ -110,15 +123,16 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_patch",
     {
       description:
-        "Apply a few structured edits (add_node, add_edge, set_label). Do not supply x/y; draw.io layout places new cells. Coordinates belong to the editor, not the model.",
+        "Apply a few structured edits (add_node, add_edge, set_label, remove_node, remove_edge). Prefer remove_* over diagram_replace when deleting elements, so the user's manual layout survives. Do not supply x/y; draw.io layout places new cells. Coordinates belong to the editor, not the model. Patches always target one page: pass page (index or name) for multi-page diagrams.",
       inputSchema: z.object({
         operations: z.array(patchOpSchema).min(1),
         layout: layoutSchema.optional(),
+        page: pageSchema,
       }),
     },
-    async ({ operations, layout }) => {
+    async ({ operations, layout, page }) => {
       try {
-        return ok(await app.patch({ operations, layout: layout as LayoutName | undefined }));
+        return ok(await app.patch({ operations, layout: layout as LayoutName | undefined, page }));
       } catch (err) {
         return fail(err);
       }
@@ -165,14 +179,18 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_export",
     {
       description:
-        "Write the current diagram to an explicit filesystem path as .drawio. Relative paths resolve against the process cwd. Will not write unless path is provided.",
+        "Write the current diagram to an explicit filesystem path: .drawio XML by default, or a png/svg image rendered by the live canvas (requires a connected canvas; call editor_ensure first). Format defaults from the file extension. Relative paths resolve against the process cwd. Will not write unless path is provided.",
       inputSchema: z.object({
-        path: z.string().describe("Absolute or cwd-relative destination, e.g. ./docs/architecture.drawio"),
+        path: z.string().describe("Absolute or cwd-relative destination, e.g. ./docs/architecture.drawio or ./docs/architecture.png"),
+        format: z
+          .enum(["drawio", "png", "svg"])
+          .optional()
+          .describe("Export format. Defaults from the path extension (.png / .svg), otherwise drawio XML."),
       }),
     },
-    async ({ path: dest }) => {
+    async ({ path: dest, format }) => {
       try {
-        return ok(await app.exportTo(dest));
+        return ok(await app.exportTo(dest, format));
       } catch (err) {
         return fail(err);
       }

@@ -14,11 +14,11 @@ diag-weaver 是 **图编辑器为核、MCP 为手** 的绘图工具：用户用�
 ## 常用验证命令
 
 ```sh
-npm test
-npm run build
+pnpm test
+pnpm build
 ```
 
-活画布冒烟（需本机浏览器能打开编辑器页）：`node scripts/smoke-embed.mjs`。改 MCP 工具或存储行为后，至少跑 `npm test`；改 `web/editor.html` / embed 桥后应做一次画布冒烟，不得只凭单测声称「画布可用」。
+本地当 CLI 测 MCP：`pnpm run link`（构建后 `pnpm add -g .`，等价于旧的 `pnpm link --global`），然后配置里直接跑 `diag-weaver`。卸全局：`pnpm run unlink`。活画布冒烟（需本机浏览器能打开编辑器页）：`node scripts/smoke-embed.mjs`。改 MCP 工具或存储行为后，至少跑 `pnpm test`；改 `web/editor.html` / embed 桥后应做一次画布冒烟，不得只凭单测声称「画布可用」。
 
 - **不要**在 Agent cwd 自动创建 `graph-store` 或其它仓库目录。
 - **不要**把 `dist/`、`node_modules/`、`coverage/`、`smoke-result.json` 入库（见 `.gitignore`）。
@@ -28,7 +28,7 @@ npm run build
 
 入口 `src/index.ts`：stdio MCP + 懒启动的本地 HTTP 编辑器。`WeaverApp` 编排 `SnapshotStore` 与 `EditorHost`。用户拖拽与 Agent `load`/`replace` 共用一份 XML；autosave 进 `current`（空白图且尚无 current 时不落盘）。恢复 = 快照 copy 成 current 再 `load`，没有 Draft/Stage/Commit。
 
-布局交给 draw.io（embed `layout` / Arrange），不要与自研几何双写。`diagram_patch` 只允许结构化补丁（加框、连线、改字），坐标交给编辑器。
+布局交给 draw.io（embed `layout` / Arrange），不要与自研几何双写。`diagram_patch` 只允许结构化补丁（加框、连线、改字、删元素），坐标交给编辑器；多页图必须显式指定 `page`。
 
 ## 重要工程约束
 

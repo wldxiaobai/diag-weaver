@@ -27,6 +27,27 @@ function openBrowser(url: string): void {
   }
 }
 
+/** 解码 draw.io export 返回的 data URL(或裸 base64)为二进制 */
+export function decodeExportData(data: unknown, format: "png" | "svg"): Uint8Array {
+  if (typeof data !== "string" || !data.trim()) {
+    throw new Error(`draw.io export returned no ${format} data`);
+  }
+  let bytes: Uint8Array;
+  if (data.startsWith("data:")) {
+    const comma = data.indexOf(",");
+    if (comma === -1) throw new Error(`draw.io ${format} export is a malformed data URL`);
+    const meta = data.slice(0, comma);
+    const payload = data.slice(comma + 1);
+    bytes = meta.includes(";base64")
+      ? Buffer.from(payload, "base64")
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+  } else {
+    bytes = Buffer.from(data, "base64");
+  }
+  if (!bytes.length) throw new Error(`draw.io ${format} export decoded to empty data`);
+  return bytes;
+}
+
 function waitUntil(predicate: () => boolean, ms: number, message: string): Promise<void> {
   const start = Date.now();
   return new Promise((resolve, reject) => {
@@ -88,7 +109,16 @@ export class BrowserHost implements EditorHost {
     const server = createServer((req, res) => {
       void this.handleHttp(req, res, html);
     });
-    this.wss = new WebSocketServer({ server, path: "/bridge" });
+    this.wss = new WebSocketServer({
+      server,
+      path: "/bridge",
+      // 浏览器发起的 WS 握手必带 Origin;只放行本机编辑器页。
+      // 无 Origin 的是非浏览器客户端(如桥协议测试的 ws 库),不属于「本机恶意网页」威胁模型。
+      verifyClient: (info, done) => {
+        if (!info.origin || this.isAllowedOrigin(info.origin)) done(true);
+        else done(false, 403, "origin not allowed");
+      },
+    });
     this.wss.on("connection", (ws) => this.onSocket(ws));
 
     let lastError: unknown;
@@ -134,16 +164,13 @@ export class BrowserHost implements EditorHost {
   }
 
   async close(): Promise<void> {
-    for (const waiter of this.waiters) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error("editor host closed"));
-    }
-    this.waiters.length = 0;
+    this.failWaiters(new Error("editor host closed"));
     this.socket?.close();
     this.socket = null;
     this.editorReady = false;
-    await new Promise<void>((resolve) => this.wss?.close(() => resolve()));
-    await new Promise<void>((resolve) => this.http?.close(() => resolve()));
+    // 懒启动下可能从未 listen 过,close 必须容忍 wss/http 尚不存在
+    await new Promise<void>((resolve) => (this.wss ? this.wss.close(() => resolve()) : resolve()));
+    await new Promise<void>((resolve) => (this.http ? this.http.close(() => resolve()) : resolve()));
     this.wss = undefined;
     this.http = undefined;
   }
@@ -157,8 +184,33 @@ export class BrowserHost implements EditorHost {
     return run;
   }
 
+  private isAllowedOrigin(origin: string): boolean {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    if (!["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)) return false;
+    // 只认本编辑器实际绑定的端口,避免本机其它服务的页面冒充
+    const selfPort = this._url ? new URL(this._url).port : "";
+    return parsed.port === selfPort;
+  }
+
+  /** socket 断开、被顶替或宿主关闭时,立即 reject 全部进行中的请求,不干等超时 */
+  private failWaiters(err: Error): void {
+    for (const waiter of this.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(err);
+    }
+  }
+
   private onSocket(ws: WebSocket): void {
-    this.socket?.close();
+    if (this.socket && this.socket !== ws) {
+      this.socket.close();
+      this.failWaiters(new Error("draw.io bridge replaced by a new connection"));
+    }
     this.socket = ws;
     this.editorReady = false;
     ws.on("message", (data) => {
@@ -175,6 +227,7 @@ export class BrowserHost implements EditorHost {
       if (this.socket === ws) {
         this.socket = null;
         this.editorReady = false;
+        this.failWaiters(new Error("draw.io bridge disconnected"));
       }
     });
   }
@@ -218,10 +271,22 @@ export class BrowserHost implements EditorHost {
     return this.exportXml();
   }
 
-  private async exportXml(): Promise<string> {
+  async exportImage(format: "png" | "svg"): Promise<Uint8Array> {
+    await this.ensure();
+    return this.enqueue(async () => {
+      const msg = await this.requestExport(format);
+      return decodeExportData(msg.data, format);
+    });
+  }
+
+  private async requestExport(format: string): Promise<DrawioMsg> {
     const pending = this.waitFor("export", 20_000);
-    this.send({ action: "export", format: "xml" });
-    const msg = await pending;
+    this.send({ action: "export", format });
+    return pending;
+  }
+
+  private async exportXml(): Promise<string> {
+    const msg = await this.requestExport("xml");
     const xml = typeof msg.xml === "string" ? msg.xml : "";
     if (!xml) throw new Error("draw.io export returned empty XML");
     return xml;

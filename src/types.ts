@@ -37,10 +37,25 @@ export type CellSummary = {
   target?: string;
 };
 
-export type DiagramSummary = {
-  blank: boolean;
+/** 单页摘要;index 为 1 起的页号 */
+export type PageSummary = {
+  index: number;
+  id?: string;
+  name?: string;
   cells: CellSummary[];
 };
+
+export type DiagramSummary = {
+  blank: boolean;
+  /** 跨页平铺视图,便于单页场景直接消费;多页时以 pages 分组为准 */
+  cells: CellSummary[];
+  pages: PageSummary[];
+};
+
+/** 页定位:1 起的页号,或页 name / id */
+export type PageRef = number | string;
+
+export type ExportFormat = "drawio" | "png" | "svg";
 
 export type SnapshotInfo = {
   label: string;
@@ -52,7 +67,9 @@ export type SnapshotInfo = {
 export type PatchOp =
   | { type: "add_node"; id?: string; label: string; style?: string }
   | { type: "add_edge"; id?: string; source: string; target: string; label?: string; style?: string }
-  | { type: "set_label"; id: string; label: string };
+  | { type: "set_label"; id: string; label: string }
+  | { type: "remove_node"; id: string }
+  | { type: "remove_edge"; id: string };
 
 export interface EditorHost {
   readonly url: string;
@@ -60,6 +77,8 @@ export interface EditorHost {
   ensure(): Promise<EditorStatus>;
   load(opts: LoadOptions): Promise<string>;
   readXml(): Promise<string>;
+  /** 由画布渲染并导出图片(png/svg 二进制);需要活画布连接 */
+  exportImage(format: "png" | "svg"): Promise<Uint8Array>;
   onAutosave(handler: (xml: string) => void): void;
   close(): Promise<void>;
 }
