@@ -12,8 +12,8 @@ async function main(): Promise<void> {
   });
   const app = new WeaverApp(store, host);
 
-  // 懒启动:进程启动只接 stdio,不绑编辑器端口、不建目录;
-  // 首次 editor_ensure / diagram_replace 时 BrowserHost.ensure() 才 listen 并打开浏览器
+  // 懒启动:进程启动只接 stdio;
+  // 首次 editor_ensure / diagram_replace 时 BrowserHost.ensure() 才 listen 并打开浏览器,目录也到首次真正保存时才创建
   console.error(
     `diag-weaver ready. store=${store.rootDir()} created=${await store.hasRoot()} (editor starts lazily on first editor_ensure; directories are created only on first real save)`,
   );

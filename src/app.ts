@@ -64,7 +64,7 @@ export class WeaverApp {
     if (!args.operations.length) throw new Error("diagram_patch requires at least one operation");
     const xml0 = (await this.readXmlOptional()) ?? BLANK_DIAGRAM;
     const xml1 = applyPatch(xml0, args.operations, args.page);
-    // set_label 与 remove_* 不新增元素,不触发重排,保护用户手工布局
+    // 只有 add_* 引入新元素需要重排;set_label / remove_* 保留用户手工布局
     const needsLayout = args.operations.some((op) => op.type === "add_node" || op.type === "add_edge");
     const layout: LayoutName = args.layout ?? (needsLayout ? "verticalFlow" : "none");
     const xml = await this.host.load({ xml: xml1, layout });
@@ -96,7 +96,7 @@ export class WeaverApp {
       await this.store.exportTo(dest, xml);
       return { path: dest, format: resolved };
     }
-    // png/svg 由活画布渲染,红线不变:只有显式给出路径才写工作区
+    // png/svg 由活画布渲染,需要编辑器在线;路径已由调用方显式给出
     if (!this.host.isConnected()) {
       throw new Error(`${resolved} export requires the live canvas; run editor_ensure first`);
     }

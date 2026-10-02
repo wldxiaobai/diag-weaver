@@ -112,8 +112,8 @@ export class BrowserHost implements EditorHost {
     this.wss = new WebSocketServer({
       server,
       path: "/bridge",
-      // 浏览器发起的 WS 握手必带 Origin;只放行本机编辑器页。
-      // 无 Origin 的是非浏览器客户端(如桥协议测试的 ws 库),不属于「本机恶意网页」威胁模型。
+      // 浏览器发起的 WS 握手必带 Origin,只放行本机编辑器页;
+      // 无 Origin 的视为非浏览器客户端(如桥协议测试的 ws 库),直接放行。
       verifyClient: (info, done) => {
         if (!info.origin || this.isAllowedOrigin(info.origin)) done(true);
         else done(false, 403, "origin not allowed");

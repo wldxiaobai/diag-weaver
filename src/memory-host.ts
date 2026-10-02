@@ -3,8 +3,8 @@ import { applyPatch, detectFormat } from "./xml.js";
 import type { EditorHost, EditorStatus, LoadOptions, PageRef, PatchOp } from "./types.js";
 
 /**
- * In-process canvas stand-in for tests. Not a product path.
- * Real sessions use BrowserHost + embed.diagrams.net.
+ * In-process canvas stand-in used by tests;
+ * real sessions run BrowserHost + embed.diagrams.net.
  */
 export class MemoryHost implements EditorHost {
   readonly url = "memory://diag-weaver";

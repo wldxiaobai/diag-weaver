@@ -8,22 +8,20 @@
 Agent ──MCP┘
 ```
 
-不做独立对话 Agent，不内嵌 LLM，不扫整个工作区当第二个大脑。
-
 ## 第一期形态
 
-- **真源**：draw.io XML / 画布（官方 [embed mode](https://www.drawio.com/doc/faq/embed-mode)：`embed=1&proto=json`，`autosave`，`layout`，Mermaid `descriptor`）。
-- **编辑器宿主**：本机 `127.0.0.1` HTTP 页里的 iframe。接口是 `EditorHost`；第一期是 `BrowserHost`。以后换成 IDE Webview / MCP Apps 时 **不改 MCP 工具名**。
-- **存储**：用户数据目录下的 `current.drawio` + `snapshots/<时间>-<标签>.drawio`。默认 Windows `%APPDATA%\diag-weaver`。进程握手、`tools/list`、空 `diagram_read` **不会 mkdir**，也不会在 Agent cwd 建 `graph-store`。
-- **工具面刻意少**：`editor_ensure`、`diagram_replace`、`diagram_read`、`diagram_patch`、`diagram_snapshot`、`diagram_restore`、`diagram_export`。
+- **真源**：draw.io XML / 画布（官方 [embed mode](https://www.drawio.com/doc/faq/embed-mode)：`embed=1&proto=json`，`autosave`，`layout`，Mermaid `descriptor`）。仓库内唯一的图数据结构就是这份 XML。
+- **编辑器宿主**：本机 `127.0.0.1` HTTP 页里的 iframe。接口是 `EditorHost`；第一期是 `BrowserHost`。以后换成 IDE Webview / MCP Apps 时 **MCP 工具名保持不变**。
+- **存储**：用户数据目录下的 `current.drawio` + `snapshots/<时间>-<标签>.drawio`，Windows 默认 `%APPDATA%\diag-weaver`。进程握手、`tools/list`、空 `diagram_read` 均保持只读，目录在首次真正保存时才创建。
+- **工具面小而聚焦**：`editor_ensure`、`diagram_replace`、`diagram_read`、`diagram_patch`、`diagram_snapshot`、`diagram_restore`、`diagram_export`。布局与坐标始终由编辑器负责，工具只做整图 / 单页级的结构化编辑。
 - **多页图安全**：`diagram_read` 的 summary 按页分组（`summary.pages`，另有跨页平铺的 `cells`）；`diagram_patch` 始终只作用于一个页，多页图必须显式传 `page`（1 起的页号或页名），补丁查找与插入都限定在目标页内，跨页同名 id 不会误伤。指定 `id` 时按原样写入；该 id 已在目标页存在才会报错，另一页上的同名 id 不占名额。同一批操作里先删掉的 id 可以再加回来。
 - **结构化补丁**：`diagram_patch` 支持 `add_node` / `add_edge` / `set_label` / `remove_node` / `remove_edge`。删节点会级联删掉其子 cell，以及挂在这些 cell 上的边；删元素请用 `remove_*` 而不是整图 `diagram_replace`，以保留用户手工布局。
 
-社区复用：画布用官方 embed.diagrams.net，不自研 mxGraph，不把 lgazo 的 30+ 格子级工具暴露给 Agent。lgazo / 官方 `@drawio/mcp` 负责「遥控格子 / 打开看看」；这里负责同一张图的本地生命周期（可见、可手改、可快照、不污染工作区）。
+画布直接加载官方 embed.diagrams.net，仓库内不含编辑器源码；工具面聚焦同一张图的本地生命周期：可见、可手改、可快照，文件默认都落在用户数据目录。
 
 ## 安装与 MCP 配置
 
-用 pnpm（生成物在 `dist/`，不入库）。测 MCP 时走「构建 + 注册到全局 bin」，pnpm 12 已去掉 `pnpm link --global`，用 `pnpm add -g .` 达到同样效果：
+用 pnpm（生成物在 `dist/`）。测 MCP 时走「构建 + 注册到全局 bin」，pnpm 12 已去掉 `pnpm link --global`，用 `pnpm add -g .` 达到同样效果：
 
 ```bash
 pnpm install
@@ -62,21 +60,14 @@ Cursor MCP 配置（全局注册之后）：
 
 | 变量 | 作用 |
 |------|------|
-| `DIAG_WEAVER_STORE` | 覆盖快照根目录（仍默认不在 cwd） |
+| `DIAG_WEAVER_STORE` | 覆盖快照根目录（默认为用户数据目录） |
 | `DIAG_WEAVER_PORT` | 编辑器 HTTP 端口，默认 `47821` |
 | `DIAG_WEAVER_NO_BROWSER` | 设为 `1` 时不自动打开浏览器 |
 
-编辑器是懒启动的：进程启动只建立 MCP stdio 通道，不绑端口、不建目录；首次 `editor_ensure` 或 `diagram_replace` 才监听本机 HTTP 页、在 stderr 打印编辑器 URL 并打开浏览器。用户在画布上拖节点后，Agent 再 `diagram_read` 应能看到新位置。
+编辑器是懒启动的：进程启动只建立 MCP stdio 通道；首次 `editor_ensure` 或 `diagram_replace` 才监听本机 HTTP 页、在 stderr 打印编辑器 URL 并打开浏览器。用户在画布上拖节点后，Agent 再 `diagram_read` 应能看到新位置。
 
-只有 `diagram_export` 在被明确给出路径时才往工作区写文件：默认导出 `.drawio` XML；也支持活画布渲染的 `png` / `svg` 图片（需要画布已连接，`format` 可显式指定，缺省按扩展名 `.png` / `.svg` 推断），方便把架构图直接插进 README / 文档。
-
-## 明确不做
-
-- 编辑器内聊天窗口 / 自配 API Key
-- Draft / Stage / Commit、游标、`graph_nudge_*`
-- 把 Graph JSON 当真源再 roundtrip
-- 第一期绑死某个 IDE 的 Webview
+`diagram_export` 是唯一往工作区写文件的工具，且需要显式给出路径：默认导出 `.drawio` XML；也支持活画布渲染的 `png` / `svg` 图片（需要画布已连接，`format` 可显式指定，缺省按扩展名 `.png` / `.svg` 推断），方便把架构图直接插进 README / 文档。
 
 ## 许可
 
-MIT。draw.io 编辑器由 iframe 加载官方 embed 服务，不 vendoring 其源码。
+MIT。draw.io 编辑器由 iframe 加载官方 embed 服务。

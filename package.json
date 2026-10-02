@@ -1,7 +1,7 @@
 {
   "name": "diag-weaver",
   "version": "0.1.0",
-  "description": "Thin MCP + live draw.io canvas + simple local snapshots. Not a standalone agent.",
+  "description": "Thin MCP + live draw.io canvas + simple local snapshots.",
   "license": "MIT",
   "type": "module",
   "bin": {

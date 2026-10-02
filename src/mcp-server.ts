@@ -67,7 +67,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "editor_ensure",
     {
       description:
-        "Open the local draw.io canvas in the browser if needed and wait until it is connected. Does not create store directories.",
+        "Open the local draw.io canvas in the browser if needed and wait until it is connected.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -105,7 +105,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_read",
     {
       description:
-        "Read the current diagram. Default is a compact cell summary for the agent, grouped per page (summary.pages). Pass format=xml for the full draw.io XML. Uses the live canvas if connected, otherwise the saved current.drawio. Does not create directories.",
+        "Read the current diagram. Default is a compact cell summary for the agent, grouped per page (summary.pages). Pass format=xml for the full draw.io XML. Uses the live canvas if connected, otherwise the saved current.drawio.",
       inputSchema: z.object({
         format: z.enum(["summary", "xml"]).optional(),
       }),
@@ -123,7 +123,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_patch",
     {
       description:
-        "Apply a few structured edits (add_node, add_edge, set_label, remove_node, remove_edge). Prefer remove_* over diagram_replace when deleting elements, so the user's manual layout survives. Do not supply x/y; draw.io layout places new cells. Coordinates belong to the editor, not the model. Patches always target one page: pass page (index or name) for multi-page diagrams.",
+        "Apply a few structured edits (add_node, add_edge, set_label, remove_node, remove_edge). Prefer remove_* over diagram_replace when deleting elements, so the user's manual layout survives. Do not supply x/y; draw.io layout places new cells. Patches always target one page: pass page (index or name) for multi-page diagrams.",
       inputSchema: z.object({
         operations: z.array(patchOpSchema).min(1),
         layout: layoutSchema.optional(),
@@ -143,7 +143,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_snapshot",
     {
       description:
-        "Copy the current diagram to a labeled snapshot under the user data directory (not the agent cwd).",
+        "Copy the current diagram to a labeled snapshot under the user data directory.",
       inputSchema: z.object({
         label: z.string().describe('Short memorable label, e.g. "评审前"'),
       }),
@@ -161,7 +161,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_restore",
     {
       description:
-        "Restore a labeled snapshot onto the canvas. Omit label to list snapshots. Restore copies the snapshot to current and loads it; there is no separate checkout/rollback.",
+        "Restore a labeled snapshot onto the canvas. Omit label to list snapshots. Restore copies the snapshot to current and loads it onto the canvas.",
       inputSchema: z.object({
         label: z.string().optional(),
       }),
@@ -179,7 +179,7 @@ export function createMcpServer(app: WeaverApp): McpServer {
     "diagram_export",
     {
       description:
-        "Write the current diagram to an explicit filesystem path: .drawio XML by default, or a png/svg image rendered by the live canvas (requires a connected canvas; call editor_ensure first). Format defaults from the file extension. Relative paths resolve against the process cwd. Will not write unless path is provided.",
+        "Write the current diagram to an explicit filesystem path: .drawio XML by default, or a png/svg image rendered by the live canvas (requires a connected canvas; call editor_ensure first). Format defaults from the file extension. Relative paths resolve against the process cwd.",
       inputSchema: z.object({
         path: z.string().describe("Absolute or cwd-relative destination, e.g. ./docs/architecture.drawio or ./docs/architecture.png"),
         format: z
