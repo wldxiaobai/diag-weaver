@@ -58,3 +58,9 @@ pnpm build
 
 - `.agents/skills/git-commits/`：暂存、Conventional Commits、自动提交节奏。
 - `.agents/skills/git-history-safety/`：merge/rebase、冲突、回退、强制推送。
+
+## Cursor Cloud specific instructions
+
+- 登录 shell 里用 `~/.local/bin` 的 Node 22.23 和 pnpm 12.3.4（`packageManager` 锁定）。镜像自带的 `/exec-daemon/node` 是 22.14，不要拿它跑需要默认剥离 TypeScript 的邻近仓库测试。
+- `pnpm test` 与 `pnpm build` 不打开浏览器。
+- 活画布冒烟：本环境没有可用的 IPv6 路由，Chrome 走 `~/.local/bin/google-chrome-ipv4`（自带 `--disable-ipv6`）。`embed.diagrams.net` 会拒绝 Referer 里带非默认端口的 localhost，所以设 `DIAG_WEAVER_PORT=80`（Node 已有 `cap_net_bind_service`）和 `DIAG_WEAVER_NO_BROWSER=1`，再打开 `http://127.0.0.1/`。默认端口 47821 时 iframe 会 403，画布停在 “waiting for draw.io”。
